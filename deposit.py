@@ -12,7 +12,8 @@ from web3.exceptions import TransactionNotFound
 load_dotenv()
 
 # Connect to the Hoodi execution client
-RPC_URL = "https://rpc.hoodi.ethpandaops.io/"
+RPC_URL = os.getenv("RPC_URL")
+assert RPC_URL, "Missing RPC_URL in environment"
 w3 = Web3(Web3.HTTPProvider(RPC_URL))
 assert w3.is_connected(), "Web3 provider not connected."
 
@@ -96,7 +97,9 @@ def send_transaction(tx: dict, max_retries: int = 3) -> bytes:
 
 # Load deposit data
 try:
-    with open("deposit_data.json") as f:
+    deposit_data_file = os.getenv("DEPOSIT_DATA_FILE")
+    assert deposit_data_file, "Missing DEPOSIT_DATA_FILE in environment"
+    with open(deposit_data_file) as f:
         deposit_data = json.load(f)
     if not isinstance(deposit_data, list):
         raise ValueError("Deposit data must be a list")
