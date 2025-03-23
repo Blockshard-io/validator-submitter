@@ -64,16 +64,34 @@ def wait_for_transaction(tx_hash: bytes, max_attempts: int = 50) -> bool:
     return False
 
 def get_gas_price():
-    """Get current gas price with a small buffer."""
+    """Get current gas price using eth_feeHistory."""
     try:
-        # Get the current gas price
-        current_gas_price = w3.eth.gas_price
-        # Add 20% buffer
-        return int(current_gas_price * 1.2)
+        # Get fee history for the last 5 blocks
+        fee_history = w3.eth.fee_history(
+            block_count=5,
+            newest_block='latest',
+            reward_percentiles=[50, 75, 90]  # Get median, 75th percentile, and 90th percentile
+        )
+        
+        # Get the base fee for the latest block
+        base_fee = fee_history['baseFeePerGas'][-1]
+        
+        # Get the median priority fee from recent blocks
+        priority_fees = [reward[0] for reward in fee_history['reward'] if reward]  # Get median (50th percentile) rewards
+        median_priority_fee = sum(priority_fees) / len(priority_fees) if priority_fees else Web3.to_wei(2, 'gwei')
+        
+        # Calculate max fee per gas (base fee + priority fee)
+        max_fee_per_gas = base_fee + median_priority_fee
+        
+        print(f"Base fee: {Web3.from_wei(base_fee, 'gwei'):.2f} Gwei")
+        print(f"Median priority fee: {Web3.from_wei(median_priority_fee, 'gwei'):.2f} Gwei")
+        print(f"Max fee per gas: {Web3.from_wei(max_fee_per_gas, 'gwei'):.2f} Gwei")
+        
+        return max_fee_per_gas
     except Exception as e:
         print(f"Error getting gas price: {e}")
         # Fallback to a reasonable default
-        return Web3.to_wei(30, 'gwei')
+        return Web3.to_wei(50, 'gwei')
 
 def send_transaction(tx: dict, max_retries: int = 3) -> bytes:
     """Send transaction with retry logic."""
@@ -87,10 +105,11 @@ def send_transaction(tx: dict, max_retries: int = 3) -> bytes:
         except Exception as e:
             print(f"Error sending transaction (attempt {attempt + 1}): {e}")
             if attempt < max_retries - 1:
-                # Increase gas price by 20% for next attempt
-                tx['maxFeePerGas'] = int(tx['maxFeePerGas'] * 1.2)
-                print(f"Retrying with higher gas price: {tx['maxFeePerGas']}")
-                time.sleep(2)
+                # Increase gas price by 50% for next attempt
+                tx['maxFeePerGas'] = int(tx['maxFeePerGas'] * 1.5)
+                print(f"Retrying with higher gas price: {Web3.from_wei(tx['maxFeePerGas'], 'gwei'):.2f} Gwei")
+                # Wait longer between retries to allow network to stabilize
+                time.sleep(5)
             else:
                 raise
     raise Exception("Failed to send transaction after all retries")
@@ -150,7 +169,6 @@ for i, entry in enumerate(deposit_data):
         max_fee_per_gas = get_gas_price()
         print("\nTransaction details:")
         print("Nonce:", nonce)
-        print("Max fee per gas:", max_fee_per_gas)
 
         try:
             estimated_gas = w3.eth.estimate_gas({
@@ -173,9 +191,9 @@ for i, entry in enumerate(deposit_data):
             'nonce': nonce,
             'value': Web3.to_wei(32, 'ether'),
             'data': calldata,
-            'gas': int(estimated_gas * 1.1),  # 10% buffer
+            'gas': int(estimated_gas * 1.2),  # 20% buffer
             'maxFeePerGas': max_fee_per_gas,
-            'maxPriorityFeePerGas': Web3.to_wei(1.5, 'gwei'),
+            'maxPriorityFeePerGas': Web3.to_wei(2, 'gwei'),
         }
 
         try:
