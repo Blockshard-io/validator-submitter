@@ -173,6 +173,8 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-deposit_data.json/
+deposit_data.json
 validator_keys/
 wallet.json
+deposit_data-*.json
+successful_deposits.json
