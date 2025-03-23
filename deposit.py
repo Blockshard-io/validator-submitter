@@ -1,7 +1,7 @@
 import json
 import os
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Set
 from dotenv import load_dotenv
 from web3 import Web3
 from eth_account import Account
@@ -29,6 +29,29 @@ DEPOSIT_CONTRACT = Web3.to_checksum_address("0x00000000219ab540356cBB839Cbe05303
 
 # Deposit function selector for deposit(bytes, bytes, bytes, bytes32)
 function_selector = bytes.fromhex("22895118")
+
+# File to track successful deposits
+SUCCESSFUL_DEPOSITS_FILE = "successful_deposits.json"
+
+def load_successful_deposits() -> Set[str]:
+    """Load the set of successfully deposited validator pubkeys."""
+    try:
+        if os.path.exists(SUCCESSFUL_DEPOSITS_FILE):
+            with open(SUCCESSFUL_DEPOSITS_FILE, 'r') as f:
+                return set(json.load(f))
+    except Exception as e:
+        print(f"Error loading successful deposits: {e}")
+    return set()
+
+def save_successful_deposit(pubkey: str):
+    """Save a successfully deposited validator pubkey."""
+    successful = load_successful_deposits()
+    successful.add(pubkey)
+    try:
+        with open(SUCCESSFUL_DEPOSITS_FILE, 'w') as f:
+            json.dump(list(successful), f)
+    except Exception as e:
+        print(f"Error saving successful deposit: {e}")
 
 def validate_deposit_data(entry: Dict[str, Any]) -> bool:
     """Validate deposit data entry has all required fields with correct format."""
@@ -126,8 +149,29 @@ except Exception as e:
     print(f"Error loading deposit data: {str(e)}")
     exit(1)
 
+# Load successful deposits
+successful_deposits = load_successful_deposits()
+print(f"\nFound {len(successful_deposits)} previously successful deposits")
+
+# Check wallet balance
+balance = w3.eth.get_balance(FROM_ADDRESS)
+required_balance = Web3.to_wei(32, 'ether')  # 32 ETH per validator
+max_validators = balance // required_balance
+print(f"\nWallet balance: {Web3.from_wei(balance, 'ether')} ETH")
+print(f"Can process up to {max_validators} validators")
+
 for i, entry in enumerate(deposit_data):
+    # Skip if we've run out of funds
+    if i >= max_validators:
+        print(f"\nInsufficient funds to process more validators. Stopping at validator {i}.")
+        break
+        
     print(f"\nProcessing validator {i+1}:")
+    
+    # Skip if already successfully deposited
+    if entry["pubkey"] in successful_deposits:
+        print(f"Skipping validator {i+1} - already successfully deposited")
+        continue
     
     if not validate_deposit_data(entry):
         print(f"Skipping invalid deposit data for validator {i+1}")
@@ -202,6 +246,8 @@ for i, entry in enumerate(deposit_data):
             # Wait for confirmation
             if wait_for_transaction(tx_hash):
                 print(f"Successfully deposited validator {i+1}")
+                # Save successful deposit
+                save_successful_deposit(entry["pubkey"])
             else:
                 print(f"Failed to confirm deposit for validator {i+1}")
                 
