@@ -131,7 +131,6 @@ def send_transaction(tx: dict, max_retries: int = 3) -> bytes:
             if attempt < max_retries - 1:
                 # Increase gas price by 50% for next attempt
                 tx['maxFeePerGas'] = int(tx['maxFeePerGas'] * 1.5)
-                print(f"Retrying with higher gas price...")
                 # Wait longer between retries to allow network to stabilize
                 time.sleep(5)
             else:
