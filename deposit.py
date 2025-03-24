@@ -125,9 +125,9 @@ def send_transaction(tx: dict, max_retries: int = 3) -> bytes:
             signed_txn = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
             tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
             print(f"Transaction sent: 0x{tx_hash.hex()}")
+            print(f"Gas price: {Web3.from_wei(tx['maxFeePerGas'], 'gwei'):.2f} Gwei")
             return tx_hash
         except Exception as e:
-            print(f"Error sending transaction (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 # Increase gas price by 50% for next attempt
                 tx['maxFeePerGas'] = int(tx['maxFeePerGas'] * 1.5)
@@ -135,6 +135,7 @@ def send_transaction(tx: dict, max_retries: int = 3) -> bytes:
                 # Wait longer between retries to allow network to stabilize
                 time.sleep(5)
             else:
+                print(f"Failed to send transaction after {max_retries} attempts")
                 raise
     raise Exception("Failed to send transaction after all retries")
 
