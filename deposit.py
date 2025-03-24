@@ -161,18 +161,21 @@ max_validators = balance // required_balance
 print(f"Wallet balance: {Web3.from_wei(balance, 'ether')} ETH")
 print(f"Can process up to {max_validators} validators")
 
+# Counter for non-deposited validators
+processed_count = 0
+
 for i, entry in enumerate(deposit_data):
-    # Skip if we've run out of funds
-    if i >= max_validators:
-        print(f"\nInsufficient funds to process more validators. Stopping at validator {i}.")
-        break
-        
     print(f"\nProcessing validator {i+1}/{len(deposit_data)}:")
     
     # Skip if already successfully deposited
     if entry["pubkey"] in successful_deposits:
         print(f"Skipping validator {i+1} - already successfully deposited")
         continue
+    
+    # Check if we've processed enough non-deposited validators
+    if processed_count >= max_validators:
+        print(f"\nInsufficient funds to process more validators. Stopping at validator {i+1}.")
+        break
     
     if not validate_deposit_data(entry):
         print(f"Skipping invalid deposit data for validator {i+1}")
@@ -230,6 +233,7 @@ for i, entry in enumerate(deposit_data):
                 print(f"✓ Successfully deposited validator {i+1}")
                 # Save successful deposit
                 save_successful_deposit(entry["pubkey"])
+                processed_count += 1
             else:
                 print(f"✗ Failed to confirm deposit for validator {i+1}")
                 
