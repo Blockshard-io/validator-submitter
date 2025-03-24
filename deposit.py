@@ -45,11 +45,17 @@ def load_successful_deposits() -> Set[str]:
 
 def save_successful_deposit(pubkey: str):
     """Save a successfully deposited validator pubkey."""
-    successful = load_successful_deposits()
-    successful.add(pubkey)
     try:
+        # Load existing successful deposits
+        successful = load_successful_deposits()
+        
+        # Add the new pubkey
+        successful.add(pubkey)
+        
+        # Save back to file
         with open(SUCCESSFUL_DEPOSITS_FILE, 'w') as f:
             json.dump(list(successful), f)
+        print(f"Saved successful deposit for pubkey: {pubkey[:10]}...")
     except Exception as e:
         print(f"Error saving successful deposit: {e}")
 
@@ -70,20 +76,19 @@ def validate_deposit_data(entry: Dict[str, Any]) -> bool:
 
 def wait_for_transaction(tx_hash: bytes, max_attempts: int = 50) -> bool:
     """Wait for transaction confirmation."""
-    print(f"Waiting for transaction confirmation: {tx_hash.hex()}")
+    print(f"Waiting for transaction confirmation...")
     for _ in range(max_attempts):
         try:
             receipt = w3.eth.get_transaction_receipt(tx_hash)
             if receipt["status"] == 1:
-                print(f"Transaction confirmed in block {receipt['blockNumber']}")
-                print(f"Gas used: {receipt['gasUsed']}")
+                print(f"✓ Transaction confirmed in block {receipt['blockNumber']}")
                 return True
             else:
-                print("Transaction failed!")
+                print("✗ Transaction failed!")
                 return False
         except TransactionNotFound:
             time.sleep(2)  # Wait 2 seconds before next attempt
-    print("Transaction confirmation timeout")
+    print("✗ Transaction confirmation timeout")
     return False
 
 def get_gas_price():
@@ -106,13 +111,9 @@ def get_gas_price():
         # Calculate max fee per gas (base fee + priority fee)
         max_fee_per_gas = base_fee + median_priority_fee
         
-        print(f"Base fee: {Web3.from_wei(base_fee, 'gwei'):.2f} Gwei")
-        print(f"Median priority fee: {Web3.from_wei(median_priority_fee, 'gwei'):.2f} Gwei")
-        print(f"Max fee per gas: {Web3.from_wei(max_fee_per_gas, 'gwei'):.2f} Gwei")
-        
         return max_fee_per_gas
     except Exception as e:
-        print(f"Error getting gas price: {e}")
+        print(f"Warning: Error getting gas price: {e}")
         # Fallback to a reasonable default
         return Web3.to_wei(50, 'gwei')
 
@@ -123,14 +124,14 @@ def send_transaction(tx: dict, max_retries: int = 3) -> bytes:
             # Sign and send transaction
             signed_txn = w3.eth.account.sign_transaction(tx, private_key=PRIVATE_KEY)
             tx_hash = w3.eth.send_raw_transaction(signed_txn.raw_transaction)
-            print(f"\nTransaction sent (attempt {attempt + 1}): {tx_hash.hex()}")
+            print(f"Transaction sent: 0x{tx_hash.hex()}")
             return tx_hash
         except Exception as e:
-            print(f"Error sending transaction (attempt {attempt + 1}): {e}")
+            print(f"Error sending transaction (attempt {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 # Increase gas price by 50% for next attempt
                 tx['maxFeePerGas'] = int(tx['maxFeePerGas'] * 1.5)
-                print(f"Retrying with higher gas price: {Web3.from_wei(tx['maxFeePerGas'], 'gwei'):.2f} Gwei")
+                print(f"Retrying with higher gas price...")
                 # Wait longer between retries to allow network to stabilize
                 time.sleep(5)
             else:
@@ -157,7 +158,7 @@ print(f"\nFound {len(successful_deposits)} previously successful deposits")
 balance = w3.eth.get_balance(FROM_ADDRESS)
 required_balance = Web3.to_wei(32, 'ether')  # 32 ETH per validator
 max_validators = balance // required_balance
-print(f"\nWallet balance: {Web3.from_wei(balance, 'ether')} ETH")
+print(f"Wallet balance: {Web3.from_wei(balance, 'ether')} ETH")
 print(f"Can process up to {max_validators} validators")
 
 for i, entry in enumerate(deposit_data):
@@ -166,7 +167,7 @@ for i, entry in enumerate(deposit_data):
         print(f"\nInsufficient funds to process more validators. Stopping at validator {i}.")
         break
         
-    print(f"\nProcessing validator {i+1}:")
+    print(f"\nProcessing validator {i+1}/{len(deposit_data)}:")
     
     # Skip if already successfully deposited
     if entry["pubkey"] in successful_deposits:
@@ -184,35 +185,17 @@ for i, entry in enumerate(deposit_data):
         signature = bytes.fromhex(entry["signature"])
         deposit_data_root = bytes.fromhex(entry["deposit_data_root"])
 
-        # Print the raw bytes for debugging
-        print("Raw bytes:")
-        print(f"Pubkey: {pubkey.hex()}")
-        print(f"Withdrawal credentials: {withdrawal_credentials.hex()}")
-        print(f"Signature: {signature.hex()}")
-        print(f"Deposit data root: {deposit_data_root.hex()}")
-
         # Encode the arguments using ABI encoding
-        # The contract expects:
-        # - pubkey: bytes (48 bytes)
-        # - withdrawal_credentials: bytes (32 bytes)
-        # - signature: bytes (96 bytes)
-        # - deposit_data_root: bytes32 (32 bytes)
         encoded_args = encode(
             ["bytes", "bytes", "bytes", "bytes32"],
             [pubkey, withdrawal_credentials, signature, deposit_data_root]
         )
 
         calldata = function_selector + encoded_args
-        print("\nEncoded data:")
-        print("Function selector:", function_selector.hex())
-        print("Encoded args:", encoded_args.hex())
-        print("Calldata:", calldata.hex())
 
         # Get current nonce and gas price
         nonce = w3.eth.get_transaction_count(FROM_ADDRESS, "latest")
         max_fee_per_gas = get_gas_price()
-        print("\nTransaction details:")
-        print("Nonce:", nonce)
 
         try:
             estimated_gas = w3.eth.estimate_gas({
@@ -222,7 +205,6 @@ for i, entry in enumerate(deposit_data):
                 'data': calldata,
                 'nonce': nonce
             })
-            print("Estimated gas:", estimated_gas)
         except Exception as e:
             print(f"Gas estimation failed: {str(e)}")
             continue
@@ -245,16 +227,16 @@ for i, entry in enumerate(deposit_data):
             
             # Wait for confirmation
             if wait_for_transaction(tx_hash):
-                print(f"Successfully deposited validator {i+1}")
+                print(f"✓ Successfully deposited validator {i+1}")
                 # Save successful deposit
                 save_successful_deposit(entry["pubkey"])
             else:
-                print(f"Failed to confirm deposit for validator {i+1}")
+                print(f"✗ Failed to confirm deposit for validator {i+1}")
                 
         except Exception as e:
-            print(f"Transaction failed: {str(e)}")
+            print(f"✗ Transaction failed: {str(e)}")
             continue
 
     except Exception as e:
-        print(f"Error processing validator {i+1}: {str(e)}")
+        print(f"✗ Error processing validator {i+1}: {str(e)}")
         continue
