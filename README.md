@@ -17,7 +17,7 @@ This script automates Ethereum validator deposits to the **Hoodi testnet** Depos
 Minimal external dependencies:
 
 ```
-web3>=6.0.0  
+web3>=7.0.0  
 python-dotenv>=1.0.0
 ```
 
